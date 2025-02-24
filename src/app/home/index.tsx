@@ -186,7 +186,7 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     setError(null);
 
     try {
-      const response = await fetch('https://portal4.incoe.astra.co.id/api-analysis/predict', {
+      const response = await fetch('https://portal2.incoe.astra.co.id/api-analysis/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
