@@ -185,7 +185,7 @@ const CryptoPrediction: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/predict', {
+      const response = await fetch('https://portal4.incoe.astra.co.id/api-analysis/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
