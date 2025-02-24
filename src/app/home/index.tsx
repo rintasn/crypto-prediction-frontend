@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, TrendingUp, TrendingDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+// === INTERFACES ===
 interface FormData {
   base_currency: string;
   quote_currency: string;
@@ -49,6 +51,45 @@ interface PredictionData {
   forecast: ForecastPoint[];
 }
 
+interface TickerInfo {
+  ticker: string;
+  price: number;
+  change_amount: number;
+  change_percentage: number;
+  volume: number;
+}
+
+interface MarketMovers {
+  top_gainers: TickerInfo[];
+  top_losers: TickerInfo[];
+  most_actively_traded: TickerInfo[];
+  last_updated: string;
+}
+
+interface NewsArticle {
+  title: string;
+  url: string;
+  time_published: string;
+  authors: string[];
+  summary: string;
+  source: string;
+  sentiment_score: number;
+  sentiment_label: string;
+  topics: string[];
+  tickers: string[];
+}
+
+interface NewsSentiment {
+  items: NewsArticle[];
+  sentiment_summary: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    average_score: number;
+  };
+  total_count: number;
+}
+
 interface IndicatorProps {
   label: string;
   value: number | string;
@@ -56,6 +97,7 @@ interface IndicatorProps {
   description: string;
 }
 
+// === CONSTANTS ===
 const timeframes = [
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
@@ -82,6 +124,7 @@ const popularCryptos = [
   { value: 'DOGE', label: 'Dogecoin' }
 ];
 
+// === COMPONENTS ===
 const IndicatorCard: React.FC<IndicatorProps> = ({ label, value, signal, description }) => (
   <div className="p-4 bg-gray-50 rounded-lg">
     <div className="text-sm font-medium text-gray-500">{label}</div>
@@ -166,6 +209,60 @@ const ForecastTable: React.FC<{ forecast: ForecastPoint[] }> = ({ forecast }) =>
   </div>
 );
 
+const MarketMoversCard: React.FC<{ data: TickerInfo[] }> = ({ data }) => (
+  <div className="space-y-2">
+    {data.map((item, index) => (
+      <div key={index} className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
+        <div>
+          <span className="font-medium">{item.ticker}</span>
+          <span className="text-sm text-gray-500 ml-2">${item.price}</span>
+        </div>
+        <div className="flex items-center">
+          <span className={`text-sm font-medium ${
+            item.change_percentage >= 0 ? 'text-green-600' : 'text-red-600'
+          }`}>
+            {item.change_percentage >= 0 ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />}
+            {Math.abs(item.change_percentage)}%
+          </span>
+          <span className="text-xs text-gray-500 ml-2">
+            Vol: {(item.volume / 1000000).toFixed(1)}M
+          </span>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const NewsCard: React.FC<{ article: NewsArticle }> = ({ article }) => (
+  <div className="p-4 bg-gray-50 rounded-lg space-y-2">
+    <div className="flex justify-between items-start">
+      <h3 className="font-medium text-base">{article.title}</h3>
+      <span className={`px-2 py-1 rounded text-xs font-medium ${
+        article.sentiment_label === 'Positive' ? 'bg-green-100 text-green-800' :
+        article.sentiment_label === 'Negative' ? 'bg-red-100 text-red-800' :
+        'bg-gray-100 text-gray-800'
+      }`}>
+        {article.sentiment_label}
+      </span>
+    </div>
+    <p className="text-sm text-gray-600 line-clamp-2">{article.summary}</p>
+    <div className="flex justify-between items-center text-xs text-gray-500">
+      <span>{new Date(article.time_published).toLocaleDateString()}</span>
+      <span>{article.source}</span>
+    </div>
+    {article.topics.length > 0 && (
+      <div className="flex gap-1 flex-wrap">
+        {article.topics.map((topic, index) => (
+          <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+            {topic}
+          </span>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+// === MAIN COMPONENT ===
 const CryptoPrediction: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
     base_currency: 'BTC',
@@ -176,11 +273,52 @@ const CryptoPrediction: React.FC = () => {
   });
 
   const [prediction, setPrediction] = useState<PredictionData | null>(null);
+  const [marketMovers, setMarketMovers] = useState<MarketMovers | null>(null);
+  const [newsSentiment, setNewsSentiment] = useState<NewsSentiment | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Modifikasi bagian fetch request pada CryptoPrediction.tsx
-const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const fetchMarketMovers = async (apiKey: string) => {
+    setMarketLoading(true);
+    try {
+      const response = await fetch(`https://portal2.incoe.astra.co.id/api-analysis/market-movers?api_key=${apiKey}`);
+      if (!response.ok) throw new Error('Failed to fetch market data');
+      const data = await response.json();
+      setMarketMovers(data);
+    } catch (err) {
+      console.error('Error fetching market data:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setMarketLoading(false);
+    }
+  };
+
+  const fetchNewsSentiment = async (apiKey: string, selectedCrypto: string) => {
+    setNewsLoading(true);
+    try {
+      const response = await fetch(`https://portal2.incoe.astra.co.id/api-analysis/news-sentiment?api_key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tickers: selectedCrypto,
+          limit: 10,
+          sort: 'LATEST'
+        })
+      });
+      if (!response.ok) throw new Error('Failed to fetch news data');
+      const data = await response.json();
+      setNewsSentiment(data);
+    } catch (err) {
+      console.error('Error fetching news data:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -193,7 +331,7 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
           'Accept': 'application/json',
         },
         mode: 'cors',
-        credentials: 'same-origin',  // Ubah dari 'include' ke 'same-origin'
+        credentials: 'same-origin',
         body: JSON.stringify(formData),
       });
 
@@ -204,9 +342,14 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 
       const data = await response.json();
       setPrediction(data as PredictionData);
+
+      if (formData.api_key) {
+        fetchMarketMovers(formData.api_key);
+        fetchNewsSentiment(formData.api_key, formData.base_currency);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      console.error('Fetch error:', err); // Tambahkan logging untuk debugging
+      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -216,11 +359,11 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     <div className="max-w-7xl mx-auto p-4 space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Cryptocurrency Price Prediction</CardTitle>
+          <CardTitle>Cryptocurrency Analysis Dashboard</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Cryptocurrency</label>
                 <Select
@@ -304,7 +447,7 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
                   Processing
                 </>
               ) : (
-                'Get Prediction'
+                'Analyze Market'
               )}
             </Button>
           </form>
@@ -318,143 +461,253 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         </Alert>
       )}
 
-      {prediction && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Prediction Results</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Direction</h3>
-                      <div className="flex items-center mt-1">
-                        {prediction.prediction === 'UP' ? (
-                          <TrendingUp className="h-6 w-6 text-green-500 mr-2" />
-                        ) : (
-                          <TrendingDown className="h-6 w-6 text-red-500 mr-2" />
-                        )}
-                        <span className={`text-2xl font-bold ${
-                          prediction.prediction === 'UP' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {prediction.prediction}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Current Price</h3>
-                      <p className="text-2xl font-bold mt-1">
-                        ${prediction.current_price.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+      <Tabs defaultValue="prediction" className="space-y-4">
+        <TabsList className="w-full">
+          <TabsTrigger value="prediction">Price Prediction</TabsTrigger>
+          <TabsTrigger value="market">Market Overview</TabsTrigger>
+          <TabsTrigger value="news">News & Sentiment</TabsTrigger>
+        </TabsList>
 
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-2">Prediction Confidence</h3>
-                    <div className="space-y-2">
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>Upward</span>
-                          <span>{(prediction.probability_up * 100).toFixed(1)}%</span>
-                        </div>
-                        <Progress value={prediction.probability_up * 100} className="h-2" />
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>Downward</span>
-                          <span>{(prediction.probability_down * 100).toFixed(1)}%</span>
-                        </div>
-                        <Progress value={prediction.probability_down * 100} className="h-2" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-2">Model Performance</h3>
-                    <Progress value={prediction.accuracy * 100} className="h-2" />
-                    <p className="text-sm text-gray-500 mt-1">
-                      {(prediction.accuracy * 100).toFixed(1)}% accuracy on historical predictions
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Technical Analysis</CardTitle>
-              </CardHeader>
-              <CardContent>
+        <TabsContent value="prediction">
+          {prediction && (
+            <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <IndicatorCard
-                    label="RSI"
-                    value={prediction.technical_indicators.rsi}
-                    signal={prediction.technical_indicators.rsi_signal}
-                    description="Relative Strength Index"
-                  />
-                  <IndicatorCard
-                    label="MACD"
-                    value={prediction.technical_indicators.macd}
-                    signal={prediction.technical_indicators.macd_signal}
-                    description="Moving Average Convergence Divergence"
-                  />
-                  <IndicatorCard
-                    label="Stochastic"
-                    value={prediction.technical_indicators.stochastic}
-                    signal={prediction.technical_indicators.stochastic_signal}
-                    description="Stochastic Oscillator"
-                  />
-                  <IndicatorCard
-                    label="ADX"
-                    value={prediction.technical_indicators.adx}
-                    signal={prediction.technical_indicators.trend_strength}
-                    description="Average Directional Index"
-                  />
-                  <IndicatorCard
-                    label="ATR"
-                    value={prediction.technical_indicators.atr}
-                    description="Average True Range"
-                  />
-                  <IndicatorCard
-                    label="MFI"
-                    value={prediction.technical_indicators.mfi}
-                    description="Money Flow Index"
-                  />
-                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Prediction Results</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500">Direction</h3>
+                          <div className="flex items-center mt-1">
+                            {prediction.prediction === 'UP' ? (
+                              <TrendingUp className="h-6 w-6 text-green-500 mr-2" />
+                            ) : (
+                              <TrendingDown className="h-6 w-6 text-red-500 mr-2" />
+                            )}
+                            <span className={`text-2xl font-bold ${
+                              prediction.prediction === 'UP' ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {prediction.prediction}
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500">Current Price</h3>
+                          <p className="text-2xl font-bold mt-1">
+                            ${prediction.current_price.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-2">
+                          Prediction Confidence
+                        </h3>
+                        <div className="space-y-2">
+                          <div>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span>Upward</span>
+                              <span>{(prediction.probability_up * 100).toFixed(1)}%</span>
+                            </div>
+                            <Progress value={prediction.probability_up * 100} className="h-2" />
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span>Downward</span>
+                              <span>{(prediction.probability_down * 100).toFixed(1)}%</span>
+                            </div>
+                            <Progress value={prediction.probability_down * 100} className="h-2" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-2">Model Performance</h3>
+                        <Progress value={prediction.accuracy * 100} className="h-2" />
+                        <p className="text-sm text-gray-500 mt-1">
+                          {(prediction.accuracy * 100).toFixed(1)}% accuracy on historical predictions
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Technical Analysis</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <IndicatorCard
+                        label="RSI"
+                        value={prediction.technical_indicators.rsi}
+                        signal={prediction.technical_indicators.rsi_signal}
+                        description="Relative Strength Index"
+                      />
+                      <IndicatorCard
+                        label="MACD"
+                        value={prediction.technical_indicators.macd}
+                        signal={prediction.technical_indicators.macd_signal}
+                        description="Moving Average Convergence Divergence"
+                      />
+                      <IndicatorCard
+                        label="Stochastic"
+                        value={prediction.technical_indicators.stochastic}
+                        signal={prediction.technical_indicators.stochastic_signal}
+                        description="Stochastic Oscillator"
+                      />
+                      <IndicatorCard
+                        label="ADX"
+                        value={prediction.technical_indicators.adx}
+                        signal={prediction.technical_indicators.trend_strength}
+                        description="Average Directional Index"
+                      />
+                      <IndicatorCard
+                        label="ATR"
+                        value={prediction.technical_indicators.atr}
+                        description="Average True Range"
+                      />
+                      <IndicatorCard
+                        label="MFI"
+                        value={prediction.technical_indicators.mfi}
+                        description="Money Flow Index"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Price Charts and Analysis</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="aspect-w-16 aspect-h-12 bg-white rounded-lg overflow-hidden">
+                    <img
+                      src={`data:image/png;base64,${prediction.plot_base64}`}
+                      alt="Price Analysis Charts"
+                      className="object-contain w-full h-full"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Price Forecast</CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Next 10 periods prediction with confidence intervals
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <ForecastTable forecast={prediction.forecast} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="market">
+          {marketLoading ? (
+            <Card>
+              <CardContent className="p-4">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto" />
               </CardContent>
             </Card>
-          </div>
+          ) : marketMovers && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-green-600">Top Gainers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MarketMoversCard data={marketMovers.top_gainers} />
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Price Charts and Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="aspect-w-16 aspect-h-12 bg-white rounded-lg overflow-hidden">
-                <img
-                  src={`data:image/png;base64,${prediction.plot_base64}`}
-                  alt="Price Analysis Charts"
-                  className="object-contain w-full h-full"
-                />
-              </div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-red-600">Top Losers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MarketMoversCard data={marketMovers.top_losers} />
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Price Forecast</CardTitle>
-              <p className="text-sm text-gray-500">
-                Next 10 periods prediction with confidence intervals
-              </p>
-            </CardHeader>
-            <CardContent>
-              <ForecastTable forecast={prediction.forecast} />
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Most Active</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MarketMoversCard data={marketMovers.most_actively_traded} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="news">
+          {newsLoading ? (
+            <Card>
+              <CardContent className="p-4">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+              </CardContent>
+            </Card>
+          ) : newsSentiment && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sentiment Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <div className="text-sm text-green-600">Positive</div>
+                      <div className="text-2xl font-bold text-green-700">
+                        {newsSentiment.sentiment_summary.positive}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="text-sm text-gray-600">Neutral</div>
+                      <div className="text-2xl font-bold text-gray-700">
+                        {newsSentiment.sentiment_summary.neutral}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-red-50 rounded-lg">
+                      <div className="text-sm text-red-600">Negative</div>
+                      <div className="text-2xl font-bold text-red-700">
+                        {newsSentiment.sentiment_summary.negative}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <div className="text-sm text-blue-600">Average Score</div>
+                      <div className="text-2xl font-bold text-blue-700">
+                        {newsSentiment.sentiment_summary.average_score.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Latest News</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {newsSentiment.items.map((article, index) => (
+                      <NewsCard key={index} article={article} />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
