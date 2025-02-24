@@ -179,7 +179,8 @@ const CryptoPrediction: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  // Modifikasi bagian fetch request pada CryptoPrediction.tsx
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -192,7 +193,7 @@ const CryptoPrediction: React.FC = () => {
           'Accept': 'application/json',
         },
         mode: 'cors',
-        credentials: 'include',
+        credentials: 'same-origin',  // Ubah dari 'include' ke 'same-origin'
         body: JSON.stringify(formData),
       });
 
@@ -205,6 +206,7 @@ const CryptoPrediction: React.FC = () => {
       setPrediction(data as PredictionData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Fetch error:', err); // Tambahkan logging untuk debugging
     } finally {
       setLoading(false);
     }
